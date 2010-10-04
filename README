@@ -1,0 +1,22 @@
+List of the scripts used to create statistics about the BnF partnership
+
+A more up-to-date version is on http://fr.wikisource.org/wiki/Wikisource:Dialogue_BnF/Stats in French.
+
+Data
+* titles.txt: list of the titles of the BnF partnership
+* metadata-stats.txt: list of the titles of the BnF partnership with the number of pages and the BnF ID
+
+Programs
+* Download XML data
+** remove_unstuff-dom.py: DOM-version to extract a list of specified titles from a dump of download.wikimedia.org (small files)
+** remove_unstuff-sax.py: SAX-version to extract a list of specified titles from a dump of download.wikimedia.org (big files, but not too much big, the 16 Gio XML of frwikisource is too big)
+** createPagelist.py: creates a list of the pages to retrieve with Special:Export given the list of books
+** downloadPagelist.py: creates a list of HTML pages like Special:Export with a pre-filled list of books, the user has then to download each page
+** 10021.py: 100to1 to create one XML file given 100 XML files
+* Create statistics
+** create_raw_data-dom.py: Old DOM version, cannot manage big files and the 40 Mio XML of frwikisource-bnf is quite big
+** create_raw_data-sax.py: Used and up-to-date version, can handle big files with SAX
+
+Doc
+* file_format.txt : file format of the create_raw_data-dom.py output, but can be outdated, the up-to-date version is http://fr.wikisource.org/wiki/Wikisource:Dialogue_BnF/Stats
+

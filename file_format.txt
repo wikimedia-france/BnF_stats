@@ -1,0 +1,59 @@
+------- File format of the BnF-WMFr partnership statistics -------
+
+-- By book --
+Line (separator = ` ')
+- DjVu title with `_' as space, string: title
+- BnF ID, number
+- number of pages, number
+- number of gray pages, number
+- number of green pages, number
+- number of yellow pages, number
+- number of pink pages, number
+- number of uncreated pages, number
+- number of contributors, number
+- number of IPs, number
+- number of registred contributors, number
+- list of contributors, with `|' as separator and `_' as space, string
+- if finished: total time in seconds, else: 0, number
+- mean Levenshtein distance for the last pink status, number
+- mean Levenshtein distance for the last yellow status, number
+- mean Levenshtein distance for the last green status, number
+- standard deviation of the Levenshtein distance for the last pink status, number
+- standard deviation of the Levenshtein distance for the last yellow status, number
+- standard deviation of the Levenshtein distance for the last green status, number
+
+
+-- By existing page --
+Line (separator = ` ')
+- BnF ID, number
+- number of pages, number
+- number of the page, number
+- date of creation, date
+* status at the creation, status: first_status
+* last status, status: last_status
+* list of contributors, with `|' as separator and `_' as space, string: contributors
+- date of passage to gray, date
+- date of passage to pink, date
+- date of passage to yellow, date
+- date of passage to green, date
+* nonlinearity in the status detected, boolean
+- raw Levenshtein distance with the OCR at the last pink status, number
+- raw Levenshtein distance with the OCR at the last yellow status, number
+- raw Levenshtein distance with the OCR at the last green status, number
+- finer Levenshtein distance with the OCR at the last pink status (see below), number
+- finer Levenshtein distance with the OCR at the last yellow status (see below), number
+- finer Levenshtein distance with the OCR at the last green status (see below), number
+
+
+-- Format of data --
+
+- status: `0'=uncreated, `1'=problem, `2'=gray, `3'=pink, `4'=yellow, `5'=green
+- date: yyyymmddhhmmss
+- boolean: `0' (false) or `1' (true)
+
+
+-- Notes --
+
+- Levenshtein distance makes more sense here compared to the Damerau-Levenshtein because an OCR don't make the error of transposing two characters
+- finer Levenshtein distance remove `''', `'''', `{{centré|$1}}', `<noinclude' header and footer and replace all that by raw text
+
