@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 
-import codecs, re, calendar, time, math, os, os.path, Levenshtein
+import codecs, re, calendar, time, math, os, os.path, Levenshtein, urllib, xml.dom.minidom
 from xml.sax.handler import ContentHandler
 from xml.sax.saxutils import quoteattr
 from xml.sax import make_parser
@@ -11,6 +11,7 @@ class PageStatisticsHandler(ContentHandler):
     nbpages = []
     pageResultsFile = None
     bookResultsFile = None
+    blacklistTitles = []
     
     # Page statistics
     idbnf = 0
@@ -29,12 +30,12 @@ class PageStatisticsHandler(ContentHandler):
     green_date = 0
     nonlinearity = False
     isocr = False
-    raw_pink_lev = 0
-    fin_pink_lev = 0
-    raw_yellow_lev = 0
-    fin_yellow_lev = 0
-    raw_green_lev = 0
-    fin_green_lev = 0
+    raw_pink_lev = -1
+    fin_pink_lev = -1
+    raw_yellow_lev = -1
+    fin_yellow_lev = -1
+    raw_green_lev = -1
+    fin_green_lev = -1
     nbnonbotcontribs = 0
     
     # Book statistics
@@ -54,12 +55,13 @@ class PageStatisticsHandler(ContentHandler):
     date = 0
     textocr = u''
     
-    def __init__(self,idsbnf,nbpages,pageResultsFile):
+    def __init__(self,idsbnf,nbpages,blacklistTitles,pageResultsFile):
         
         # Input data and output files
         self.idsbnf = idsbnf
         self.nbpages = nbpages
         self.pageResultsFile = pageResultsFile
+        self.blacklistTitles = []
         
         # Page statistics
         self.idbnf = 0
@@ -78,12 +80,12 @@ class PageStatisticsHandler(ContentHandler):
         self.green_date = 0
         self.nonlinearity = False
         self.isocr = False
-        self.raw_pink_lev = 0
-        self.fin_pink_lev = 0
-        self.raw_yellow_lev = 0
-        self.fin_yellow_lev = 0
-        self.raw_green_lev = 0
-        self.fin_green_lev = 0
+        self.raw_pink_lev = -1
+        self.fin_pink_lev = -1
+        self.raw_yellow_lev = -1
+        self.fin_yellow_lev = -1
+        self.raw_green_lev = -1
+        self.fin_green_lev = -1
         self.nbnonbotcontribs = 0
         
         # Book statistics
@@ -112,17 +114,29 @@ class PageStatisticsHandler(ContentHandler):
             self.date = 0
         
         elif name == 'page':
-            self.book = u''
-            self.pagen = 0
             self.idbnf = 0
+            self.book = u''
             self.pages = 0
-            self.last_status = -1
+            self.pagen = 0
+            self.nbrev = 0
             self.creation_date = 0
+            self.first_status = 0
+            self.last_status = 0
+            self.usernames = set()
+            self.ips = set()
             self.gray_date = 0
             self.pink_date = 0
             self.yellow_date = 0
             self.green_date = 0
-            self.nbrev = 0
+            self.nonlinearity = False
+            self.isocr = False
+            self.raw_pink_lev = -1
+            self.fin_pink_lev = -1
+            self.raw_yellow_lev = -1
+            self.fin_yellow_lev = -1
+            self.raw_green_lev = -1
+            self.fin_green_lev = -1
+            self.nbnonbotcontribs = 0
     
     def characters(self,ch):
         
@@ -132,9 +146,17 @@ class PageStatisticsHandler(ContentHandler):
         
         if name == 'page':
             
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
+            
             # Page statistics
             
-            result_page = ( str(self.idbnf), re.sub(' ','_',self.book), str(self.pages), str(self.pagen), str(self.nbrev), str(self.creation_date), str(self.first_status), str(self.last_status), re.sub(' ','_',u'|'.join(self.usernames)), re.sub(' ','_',u'|'.join(self.ips)), str(self.gray_date), str(self.pink_date), str(self.yellow_date), str(self.green_date), str(self.nonlinearity), str(self.isocr), str(self.raw_pink_lev), str(self.raw_yellow_lev), str(self.raw_green_lev), str(self.fin_pink_lev), str(self.fin_yellow_lev), str(self.fin_green_lev) )
+            result_page = [ str(self.idbnf), re.sub(' ','_',self.book), str(self.pages), str(self.pagen), str(self.nbrev), str(self.creation_date), str(self.first_status), str(self.last_status), str(len(self.usernames)), str(len(self.ips)), re.sub(' ','_',u'|'.join(self.usernames)), re.sub(' ','_',u'|'.join(self.ips)), str(self.gray_date), str(self.pink_date), str(self.yellow_date), str(self.green_date), str(self.nonlinearity), str(self.isocr), str(self.raw_pink_lev), str(self.raw_yellow_lev), str(self.raw_green_lev), str(self.fin_pink_lev), str(self.fin_yellow_lev), str(self.fin_green_lev) ]
+            
+            if len(self.usernames) == 0:
+                result_page[10] = '|'
+            if len(self.ips) == 0:
+                result_page[11] = '|'
             
             self.pageResultsFile.write( u' '.join(result_page) )
             self.pageResultsFile.write( u'\n' )
@@ -150,32 +172,32 @@ class PageStatisticsHandler(ContentHandler):
             
             if self.idbnf not in self.books:
                 
-                self.books[self.idbnf] = ( self.idbnf, self.book, self.pages, self.nbrev, 1, self.pages-1, nbblue, nbgray, nbpink, nbyellow, nbgreen, len(self.usernames), len(self.ips), self.usernames, self.ips, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, self.nbnonbotcontribs, 0 )
+                self.books[self.idbnf] = ( self.idbnf, self.book, self.pages, self.nbrev, 1, self.pages-1, nbblue, nbgray, nbpink, nbyellow, nbgreen, len(self.usernames), len(self.ips), self.usernames, self.ips, self.isocr, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, self.nbnonbotcontribs, 0.0 )
             
             else:
                 
-                ( old_idbnf, old_book, old_pages, old_nbrev, old_created_pages, old_uncreated_pages, old_nbgray, old_nbblue, old_nbpink, old_nbyellow, old_nbgreen, old_nbusernames, old_nbips, old_usernames, old_ips, old_mean_raw_pink_lev, old_mean_raw_yellow_lev, old_mean_raw_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_mean_fin_pink_lev, old_mean_fir_yellow_lev, old_mean_fin_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_nbnonbotcontribs, old_percentnonbotcontribs ) = self.books[self.idbnf]
+                ( old_idbnf, old_book, old_pages, old_nbrev, old_created_pages, old_uncreated_pages, old_nbgray, old_nbblue, old_nbpink, old_nbyellow, old_nbgreen, old_nbusernames, old_nbips, old_usernames, old_ips, old_isocr, old_mean_raw_pink_lev, old_mean_raw_yellow_lev, old_mean_raw_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_min_mean_raw_pink_lev, old_min_mean_raw_yellow_lev, old_min_mean_raw_green_lev, old_max_mean_raw_pink_lev, old_max_mean_raw_yellow_lev, old_max_mean_raw_green_lev, old_mean_fin_pink_lev, old_mean_fir_yellow_lev, old_mean_fin_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_min_mean_fin_pink_lev, old_min_mean_fin_yellow_lev, old_min_mean_fin_green_lev, old_max_mean_fin_pink_lev, old_max_mean_fin_yellow_lev, old_max_mean_fin_green_lev, old_nbnonbotcontribs, old_percentnonbotcontribs ) = self.books[self.idbnf]
                 
                 old_usernames.update( self.usernames )
                 old_ips.update( self.ips )
                 
-                self.books[self.idbnf] = ( old_idbnf, old_book, old_pages, old_nbrev+self.nbrev, old_created_pages+1, old_uncreated_pages-1, old_nbgray+nbgray, old_nbblue+nbblue, old_nbpink+nbpink, old_nbyellow+nbyellow, old_nbgreen+nbgreen, len(old_usernames), len(old_ips), old_usernames, old_ips, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, old_nbnonbotcontribs+self.nbnonbotcontribs, old_percentnonbotcontribs )
+                self.books[self.idbnf] = ( old_idbnf, old_book, old_pages, old_nbrev+self.nbrev, old_created_pages+1, old_uncreated_pages-1, old_nbgray+nbgray, old_nbblue+nbblue, old_nbpink+nbpink, old_nbyellow+nbyellow, old_nbgreen+nbgreen, len(old_usernames), len(old_ips), old_usernames, old_ips, old_isocr, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, old_nbnonbotcontribs+self.nbnonbotcontribs, old_percentnonbotcontribs )
             
             # Add Levenshtein distances to the ensembles
-            if self.idbnf not in self.raw_pink_levenshtein_distances: self.raw_pink_levenshtein_distances[self.idbnf] = set()
-            if self.idbnf not in self.raw_yellow_levenshtein_distances: self.raw_yellow_levenshtein_distances[self.idbnf] = set()
-            if self.idbnf not in self.raw_green_levenshtein_distances: self.raw_green_levenshtein_distances[self.idbnf] = set()
-            if self.idbnf not in self.finer_pink_levenshtein_distances: self.finer_pink_levenshtein_distances[self.idbnf] = set()
-            if self.idbnf not in self.finer_yellow_levenshtein_distances: self.finer_yellow_levenshtein_distances[self.idbnf] = set()
-            if self.idbnf not in self.finer_green_levenshtein_distances: self.finer_green_levenshtein_distances[self.idbnf] = set()
+            if self.idbnf not in self.raw_pink_levenshtein_distances: self.raw_pink_levenshtein_distances[self.idbnf] = []
+            if self.idbnf not in self.raw_yellow_levenshtein_distances: self.raw_yellow_levenshtein_distances[self.idbnf] = []
+            if self.idbnf not in self.raw_green_levenshtein_distances: self.raw_green_levenshtein_distances[self.idbnf] = []
+            if self.idbnf not in self.finer_pink_levenshtein_distances: self.finer_pink_levenshtein_distances[self.idbnf] = []
+            if self.idbnf not in self.finer_yellow_levenshtein_distances: self.finer_yellow_levenshtein_distances[self.idbnf] = []
+            if self.idbnf not in self.finer_green_levenshtein_distances: self.finer_green_levenshtein_distances[self.idbnf] = []
             
-            self.raw_pink_levenshtein_distances[self.idbnf].add( self.raw_pink_lev )
-            self.raw_yellow_levenshtein_distances[self.idbnf].add( self.raw_yellow_lev )
-            self.raw_green_levenshtein_distances[self.idbnf].add( self.raw_green_lev )
-            self.finer_pink_levenshtein_distances[self.idbnf].add( self.fin_pink_lev )
-            self.finer_yellow_levenshtein_distances[self.idbnf].add( self.fin_yellow_lev )
-            self.finer_green_levenshtein_distances[self.idbnf].add( self.fin_green_lev )
-            
+            if self.raw_pink_lev != -1 : self.raw_pink_levenshtein_distances[self.idbnf].append( self.raw_pink_lev )
+            if self.raw_yellow_lev != -1 : self.raw_yellow_levenshtein_distances[self.idbnf].append( self.raw_yellow_lev )
+            if self.raw_green_lev != -1 : self.raw_green_levenshtein_distances[self.idbnf].append( self.raw_green_lev )
+            if self.fin_pink_lev != -1 : self.finer_pink_levenshtein_distances[self.idbnf].append( self.fin_pink_lev )
+            if self.fin_yellow_lev != -1 : self.finer_yellow_levenshtein_distances[self.idbnf].append( self.fin_yellow_lev )
+            if self.fin_green_lev != -1 : self.finer_green_levenshtein_distances[self.idbnf].append( self.fin_green_lev )
+        
         elif name == 'title':
             
             title = self.buf.split('/')
@@ -203,26 +225,35 @@ class PageStatisticsHandler(ContentHandler):
         
         elif name == 'revision':
             
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
+            
             self.nbrev += 1
         
         elif name == 'timestamp':
+            
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
             
             self.date = calendar.timegm( time.strptime( self.buf, '%Y-%m-%dT%H:%M:%SZ' ) )
             self.creation_date = self.date
         
         elif name == 'username':
             
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
+            
             user = self.buf
             self.usernames.add(user)
             
             # User statistics
             if user not in self.userstats:
-                self.userstats[user] = (0,set())
+                self.userstats[user] = (0,False,[])
             
-            (old_nbcontribs,old_timestamps) = self.userstats[user]
-            old_timestamps.add(self.date)
+            (old_nbcontribs,old_ip,old_timestamps) = self.userstats[user]
+            old_timestamps.append(self.date)
             
-            self.userstats[user] = (old_nbcontribs+1,old_timestamps)
+            self.userstats[user] = (old_nbcontribs+1,False,old_timestamps)
             
             if not re.search( 'bot', user, re.IGNORECASE ):
                 self.nbnonbotcontribs += 1
@@ -230,21 +261,27 @@ class PageStatisticsHandler(ContentHandler):
         
         elif name == 'ip':
             
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
+            
             user = self.buf
             self.ips.add(user)
             
             # User statistics
             if user not in self.userstats:
-                self.userstats[user] = (0,set())
+                self.userstats[user] = (0,True,[])
             
-            (old_nbcontribs,old_timestamps) = self.userstats[user]
-            old_timestamps.add(self.date)
+            (old_nbcontribs,old_ip,old_timestamps) = self.userstats[user]
+            old_timestamps.append(self.date)
             
-            self.userstats[user] = (old_nbcontribs+1,old_timestamps)
+            self.userstats[user] = (old_nbcontribs+1,True,old_timestamps)
             
             self.nbnonbotcontribs += 1
         
         elif name == 'text':
+            
+            if self.book in self.blacklistTitles or self.book+'/'+str(self.pagen) in self.blacklistTitles:
+                return
             
             # Get the status
             text = self.buf
@@ -278,7 +315,7 @@ class PageStatisticsHandler(ContentHandler):
             elif self.last_status == 4 and self.yellow_date == 0:
                 self.yellow_date = self.date
             elif self.last_status == 5 and self.green_date == 0:
-                self.green_date = self.date  
+                self.green_date = self.date
             
             if self.isocr and (self.last_status == 3 or self.last_status == 4 or self.last_status == 5):
                 
@@ -288,26 +325,29 @@ class PageStatisticsHandler(ContentHandler):
                 #print text
                 
                 raw_levenshtein_distance = Levenshtein.distance( self.textocr, text )
+                #print 'raw lev dist=%d'%raw_levenshtein_distance
                 
                 # Unwikify
                 #untext = re.sub( '<noinclude>[\n ]*(.*)[\n ]*</noinclude>(.*)<noinclude>(.*)</noinclude>', '\1\n\2', text, re.DOTALL )
-                resuntext = re.search( '<noinclude>.*</noinclude>(.*)<noinclude>.*</noinclude>', text, re.DOTALL )
+                resuntext = re.search( '<noinclude>.*?</noinclude>(.*)<noinclude>.*?</noinclude>', text, re.DOTALL )
                 if not resuntext == None:
                     untext = resuntext.group(1)
                 
-                resuntext = re.search( '\'\'\'(.*)\'\'\'', untext )
-                if not resuntext == None:
-                    untext = resuntext.group(1)
+                bold = re.findall( "'''(.*?)'''", untext, re.DOTALL )
+                for res in bold:
+                    untext = re.sub( protect_regex("'''(%s)'''"%res), "\\1", untext )
                 
-                resuntext = re.search( '\'\'(.*)\'\'', untext )
-                if not resuntext == None:
-                    untext = resuntext.group(1)
+                italics = re.findall( "''(.*?)''", untext, re.DOTALL )
+                for res in italics:
+                    untext = re.sub( protect_regex("''(%s)''"%res), "\\1", untext )
                 
-                #refs = re.findall( '<ref.*>(.*)</ref>', untext )
-                #untext = re.sub( '<ref.*>(.*)</ref>', '', untext )
-                #if not refs == None:
-                #    for ref in refs:
-                #        untext += '\n'+ref
+                refs = re.findall( "<ref(.*?)>(.*?)</ref>", untext, re.DOTALL )
+                for res in refs:
+                    #print '***'
+                    #print res
+                    #print "\n"
+                    untext = re.sub( protect_regex("<ref%s>%s</ref>"%res), "", untext )
+                    untext += '\n'+res[1]
                 
                 #print '----------------------------------------------------------------------'
                 #print 'Finer text'
@@ -316,6 +356,7 @@ class PageStatisticsHandler(ContentHandler):
                 
                 finer_levenshtein_distance = Levenshtein.distance( self.textocr, untext )
                 
+                #print 'finer lev dist=%d'%finer_levenshtein_distance
                 if self.last_status == 3:
                     self.raw_pink_lev = raw_levenshtein_distance
                     self.fin_pink_lev = finer_levenshtein_distance
@@ -325,8 +366,6 @@ class PageStatisticsHandler(ContentHandler):
                 elif self.last_status == 5:
                     self.raw_green_lev = raw_levenshtein_distance
                     self.fin_green_lev = finer_levenshtein_distance
-            
-            
 
 def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResultsFilename,userResultsFilename,alleResultsFilename):
     
@@ -351,7 +390,7 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
         nbpages[key] = int(book[2])
     
     # Parse the XML
-    h = PageStatisticsHandler(idsbnf,nbpages,pageResultsFile)
+    h = PageStatisticsHandler(idsbnf,nbpages,[],pageResultsFile)
     saxparser = make_parser()
     saxparser.setContentHandler(h)
     saxparser.parse( xmlFilename )
@@ -366,31 +405,32 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
     global_nbpink = 0
     global_nbyellow = 0
     global_nbgreen = 0
-    global_nbusernames = set()
-    global_nbips = set()
+    global_nbusernames = []
+    global_nbips = []
     global_usernames = set()
     global_ips = set()
+    global_isocr = 0
     global_nbnonbotcontribs = 0
     global_percentnonbotcontribs = 0
     
-    global_mean_raw_pink_lev = set()
-    global_mean_raw_yellow_lev = set()
-    global_mean_raw_green_lev = set()
-    global_cov_raw_pink_lev = set()
-    global_cov_raw_yellow_lev = set()
-    global_cov_raw_green_lev = set()
+    global_mean_raw_pink_lev = []
+    global_mean_raw_yellow_lev = []
+    global_mean_raw_green_lev = []
+    global_cov_raw_pink_lev = []
+    global_cov_raw_yellow_lev = []
+    global_cov_raw_green_lev = []
     
-    global_mean_fin_pink_lev = set()
-    global_mean_fin_yellow_lev = set()
-    global_mean_fin_green_lev = set()
-    global_cov_fin_pink_lev = set()
-    global_cov_fin_yellow_lev = set()
-    global_cov_fin_green_lev = set()
+    global_mean_fin_pink_lev = []
+    global_mean_fin_yellow_lev = []
+    global_mean_fin_green_lev = []
+    global_cov_fin_pink_lev = []
+    global_cov_fin_yellow_lev = []
+    global_cov_fin_green_lev = []
     
     # Create book statistics
     for k in h.books:
         
-        ( idbnf, old_book, old_pages, old_nbrev, old_created_pages, old_uncreated_pages, old_nbgray, old_nbblue, old_nbpink, old_nbyellow, old_nbgreen, old_nbusernames, old_nbips, old_usernames, old_ips, old_mean_raw_pink_lev, old_mean_raw_yellow_lev, old_mean_raw_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_mean_fin_pink_lev, old_mean_fir_yellow_lev, old_mean_fin_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_nbnonbotcontribs, old_percentnonbotcontribs ) = h.books[k]
+        ( idbnf, old_book, old_pages, old_nbrev, old_created_pages, old_uncreated_pages, old_nbgray, old_nbblue, old_nbpink, old_nbyellow, old_nbgreen, old_nbusernames, old_nbips, old_usernames, old_ips, old_isocr, old_mean_raw_pink_lev, old_mean_raw_yellow_lev, old_mean_raw_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_min_mean_raw_pink_lev, old_min_mean_raw_yellow_lev, old_min_mean_raw_green_lev, old_max_mean_raw_pink_lev, old_max_mean_raw_yellow_lev, old_max_mean_raw_green_lev, old_mean_fin_pink_lev, old_mean_fir_yellow_lev, old_mean_fin_green_lev, old_cov_fin_pink_lev, old_cov_fin_yellow_lev, old_cov_fin_green_lev, old_min_mean_fin_pink_lev, old_min_mean_fin_yellow_lev, old_min_mean_fin_green_lev, old_max_mean_fin_pink_lev, old_max_mean_fin_yellow_lev, old_max_mean_fin_green_lev, old_nbnonbotcontribs, old_percentnonbotcontribs ) = h.books[k]
         
         # Compute
         mean_raw_pink_lev = int(mean(h.raw_pink_levenshtein_distances[idbnf]))
@@ -400,14 +440,33 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
         cov_raw_yellow_lev = int(standard_deviation(h.raw_yellow_levenshtein_distances[idbnf]))
         cov_raw_green_lev = int(standard_deviation(h.raw_green_levenshtein_distances[idbnf]))
         
-        mean_fin_pink_lev = int(mean(h.raw_pink_levenshtein_distances[idbnf]))
-        mean_fin_yellow_lev = int(mean(h.raw_yellow_levenshtein_distances[idbnf]))
-        mean_fin_green_lev = int(mean(h.raw_green_levenshtein_distances[idbnf]))
-        cov_fin_pink_lev = int(standard_deviation(h.raw_pink_levenshtein_distances[idbnf]))
-        cov_fin_yellow_lev = int(standard_deviation(h.raw_yellow_levenshtein_distances[idbnf]))
-        cov_fin_green_lev = int(standard_deviation(h.raw_green_levenshtein_distances[idbnf]))
+        mean_fin_pink_lev = int(mean(h.finer_pink_levenshtein_distances[idbnf]))
+        mean_fin_yellow_lev = int(mean(h.finer_yellow_levenshtein_distances[idbnf]))
+        mean_fin_green_lev = int(mean(h.finer_green_levenshtein_distances[idbnf]))
+        cov_fin_pink_lev = int(standard_deviation(h.finer_pink_levenshtein_distances[idbnf]))
+        cov_fin_yellow_lev = int(standard_deviation(h.finer_yellow_levenshtein_distances[idbnf]))
+        cov_fin_green_lev = int(standard_deviation(h.finer_green_levenshtein_distances[idbnf]))
         
-        percentnonbotcontribs = old_nbnonbotcontribs/old_nbrev
+        min_mean_raw_pink_lev = mine(h.raw_pink_levenshtein_distances[idbnf])
+        min_mean_raw_yellow_lev = mine(h.raw_yellow_levenshtein_distances[idbnf])
+        min_mean_raw_green_lev = mine(h.raw_green_levenshtein_distances[idbnf])
+        max_mean_raw_pink_lev = maxe(h.raw_pink_levenshtein_distances[idbnf])
+        max_mean_raw_yellow_lev = maxe(h.raw_yellow_levenshtein_distances[idbnf])
+        max_mean_raw_green_lev = maxe(h.raw_green_levenshtein_distances[idbnf])
+        
+        min_mean_fin_pink_lev = mine(h.finer_pink_levenshtein_distances[idbnf])
+        min_mean_fin_yellow_lev = mine(h.finer_yellow_levenshtein_distances[idbnf])
+        min_mean_fin_green_lev = mine(h.finer_green_levenshtein_distances[idbnf])
+        max_mean_fin_pink_lev = maxe(h.finer_pink_levenshtein_distances[idbnf])
+        max_mean_fin_yellow_lev = maxe(h.finer_yellow_levenshtein_distances[idbnf])
+        max_mean_fin_green_lev = maxe(h.finer_green_levenshtein_distances[idbnf])
+        
+        #if k == 5085:
+        #    print h.finer_pink_levenshtein_distances[idbnf]
+        #    print h.finer_yellow_levenshtein_distances[idbnf]
+        #    print h.finer_green_levenshtein_distances[idbnf]
+        
+        percentnonbotcontribs = float(old_nbnonbotcontribs)/float(old_nbrev)*100
         
         # Global stats
         global_nbbooks += 1
@@ -420,27 +479,35 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
         global_nbpink += old_nbpink
         global_nbyellow += old_nbyellow
         global_nbgreen += old_nbgreen
-        global_nbusernames.add(old_nbusernames)
-        global_nbips.add(old_nbips)
+        global_nbusernames.append(old_nbusernames)
+        global_nbips.append(old_nbips)
         global_usernames.update(old_usernames)
         global_ips.update(old_ips)
         global_nbnonbotcontribs += old_nbnonbotcontribs
         
-        global_mean_raw_pink_lev.add(mean_raw_pink_lev)
-        global_mean_raw_yellow_lev.add(mean_raw_yellow_lev)
-        global_mean_raw_green_lev.add(mean_raw_green_lev)
-        global_cov_raw_pink_lev.add(cov_raw_pink_lev)
-        global_cov_raw_yellow_lev.add(cov_raw_yellow_lev)
-        global_cov_raw_green_lev.add(cov_raw_green_lev)
+        if old_isocr:
+            global_isocr += 1
         
-        global_mean_fin_pink_lev.add(mean_fin_pink_lev)
-        global_mean_fin_yellow_lev.add(mean_fin_yellow_lev)
-        global_mean_fin_green_lev.add(mean_fin_green_lev)
-        global_cov_fin_pink_lev.add(cov_fin_pink_lev)
-        global_cov_fin_yellow_lev.add(cov_fin_yellow_lev)
-        global_cov_fin_green_lev.add(cov_fin_green_lev)
+        global_mean_raw_pink_lev.append(mean_raw_pink_lev)
+        global_mean_raw_yellow_lev.append(mean_raw_yellow_lev)
+        global_mean_raw_green_lev.append(mean_raw_green_lev)
+        global_cov_raw_pink_lev.append(cov_raw_pink_lev)
+        global_cov_raw_yellow_lev.append(cov_raw_yellow_lev)
+        global_cov_raw_green_lev.append(cov_raw_green_lev)
         
-        h.books[idbnf] = ( str(idbnf), re.sub(' ','_',old_book), str(old_pages), str(old_nbrev), str(old_created_pages), str(old_uncreated_pages), str(old_nbgray), str(old_nbblue), str(old_nbpink), str(old_nbyellow), str(old_nbgreen), str(len(old_usernames)), str(len(old_ips)), re.sub(' ','_',u'|'.join(old_usernames)), re.sub(' ','_',u'|'.join(old_ips)), str(mean_raw_pink_lev), str(mean_raw_yellow_lev), str(mean_raw_green_lev), str(cov_raw_pink_lev), str(cov_raw_yellow_lev), str(cov_raw_green_lev), str(mean_fin_pink_lev), str(mean_fin_yellow_lev), str(mean_fin_green_lev), str(cov_fin_pink_lev), str(cov_fin_yellow_lev), str(cov_fin_green_lev), str(old_nbnonbotcontribs), str(percentnonbotcontribs) )
+        global_mean_fin_pink_lev.append(mean_fin_pink_lev)
+        global_mean_fin_yellow_lev.append(mean_fin_yellow_lev)
+        global_mean_fin_green_lev.append(mean_fin_green_lev)
+        global_cov_fin_pink_lev.append(cov_fin_pink_lev)
+        global_cov_fin_yellow_lev.append(cov_fin_yellow_lev)
+        global_cov_fin_green_lev.append(cov_fin_green_lev)
+        
+        h.books[idbnf] = [ str(idbnf), re.sub(' ','_',old_book), str(old_pages), str(old_nbrev), str(old_created_pages), str(old_uncreated_pages), str(old_nbgray), str(old_nbblue), str(old_nbpink), str(old_nbyellow), str(old_nbgreen), str(len(old_usernames)), str(len(old_ips)), re.sub(' ','_',u'|'.join(old_usernames)), re.sub(' ','_',u'|'.join(old_ips)), str(old_isocr), str(mean_raw_pink_lev), str(mean_raw_yellow_lev), str(mean_raw_green_lev), str(cov_raw_pink_lev), str(cov_raw_yellow_lev), str(cov_raw_green_lev), str(min_mean_raw_pink_lev), str(min_mean_raw_yellow_lev), str(min_mean_raw_green_lev), str(max_mean_raw_pink_lev), str(max_mean_raw_yellow_lev), str(max_mean_raw_green_lev), str(mean_fin_pink_lev), str(mean_fin_yellow_lev), str(mean_fin_green_lev), str(cov_fin_pink_lev), str(cov_fin_yellow_lev), str(cov_fin_green_lev), str(min_mean_fin_pink_lev), str(min_mean_fin_yellow_lev), str(min_mean_fin_green_lev), str(max_mean_fin_pink_lev), str(max_mean_fin_yellow_lev), str(max_mean_fin_green_lev), str(old_nbnonbotcontribs), str(percentnonbotcontribs) ]
+        
+        if len(old_usernames) == 0:
+            h.books[idbnf][13] = '|'
+        if len(old_ips) == 0:
+            h.books[idbnf][14] = '|'
         
         # Save results for the book
         bookResultsFile.write( u' '.join(h.books[idbnf]) )
@@ -460,15 +527,77 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
     mean_global_cov_fin_yellow_lev = int(mean(global_cov_fin_yellow_lev))
     mean_global_cov_fin_green_lev = int(mean(global_cov_fin_green_lev))
     
-    alleResultsFile.write( u' '.join( ( str(global_nbbooks), str(global_pages), str(global_pages/global_nbbooks), str(global_nbrev), str(global_created_pages), str(global_uncreated_pages), str(global_nbgray), str(global_nbblue), str(global_nbpink), str(global_nbyellow), str(global_nbgreen), str(mean(global_nbusernames)), str(mean(global_nbips)), re.sub(' ','_',u'|'.join(global_usernames)), re.sub(' ','_',u'|'.join(global_ips)), str(mean_global_mean_raw_pink_lev), str(mean_global_mean_raw_yellow_lev), str(mean_global_mean_raw_green_lev), str(mean_global_cov_raw_pink_lev), str(mean_global_cov_raw_yellow_lev), str(mean_global_cov_raw_green_lev), str(mean_global_mean_fin_pink_lev), str(mean_global_mean_fin_yellow_lev), str(mean_global_mean_fin_green_lev), str(mean_global_cov_fin_pink_lev), str(mean_global_cov_fin_yellow_lev), str(mean_global_cov_fin_green_lev), str(global_nbnonbotcontribs), str(global_nbnonbotcontribs/global_nbrev) ) ) )
+    min_global_mean_raw_pink_lev = mine(global_mean_raw_pink_lev)
+    min_global_mean_raw_yellow_lev = mine(global_mean_raw_yellow_lev)
+    min_global_mean_raw_green_lev = mine(global_mean_raw_green_lev)
+    max_global_mean_raw_pink_lev = maxe(global_mean_raw_pink_lev)
+    max_global_mean_raw_yellow_lev = maxe(global_mean_raw_yellow_lev)
+    max_global_mean_raw_green_lev = maxe(global_mean_raw_green_lev)
+    
+    min_global_mean_fin_pink_lev = mine(global_mean_fin_pink_lev)
+    min_global_mean_fin_yellow_lev = mine(global_mean_fin_yellow_lev)
+    min_global_mean_fin_green_lev = mine(global_mean_fin_green_lev)
+    max_global_mean_fin_pink_lev = maxe(global_mean_fin_pink_lev)
+    max_global_mean_fin_yellow_lev = maxe(global_mean_fin_yellow_lev)
+    max_global_mean_fin_green_lev = maxe(global_mean_fin_green_lev)
+    
+    if len(global_usernames) == 0:
+        global_usernames = ['|']
+    if len(global_ips) == 0:
+        global_ips = ['|']
+    
+    alleResultsFile.write( u' '.join( ( str(global_nbbooks), str(global_pages), str(float(global_pages)/float(global_nbbooks)), str(global_nbrev), str(global_created_pages), str(global_uncreated_pages), str(global_nbgray), str(global_nbblue), str(global_nbpink), str(global_nbyellow), str(global_nbgreen), str(mean(global_nbusernames)), str(mean(global_nbips)), re.sub(' ','_',u'|'.join(global_usernames)), re.sub(' ','_',u'|'.join(global_ips)), str(global_isocr), str(mean_global_mean_raw_pink_lev), str(mean_global_mean_raw_yellow_lev), str(mean_global_mean_raw_green_lev), str(mean_global_cov_raw_pink_lev), str(mean_global_cov_raw_yellow_lev), str(mean_global_cov_raw_green_lev), str(min_global_mean_raw_pink_lev), str(min_global_mean_raw_yellow_lev), str(min_global_mean_raw_green_lev), str(max_global_mean_raw_pink_lev), str(max_global_mean_raw_yellow_lev), str(max_global_mean_raw_green_lev), str(mean_global_mean_fin_pink_lev), str(mean_global_mean_fin_yellow_lev), str(mean_global_mean_fin_green_lev), str(mean_global_cov_fin_pink_lev), str(mean_global_cov_fin_yellow_lev), str(mean_global_cov_fin_green_lev), str(min_global_mean_fin_pink_lev), str(min_global_mean_fin_yellow_lev), str(min_global_mean_fin_green_lev), str(max_global_mean_fin_pink_lev), str(max_global_mean_fin_yellow_lev), str(max_global_mean_fin_green_lev), str(global_nbnonbotcontribs), str(float(global_nbnonbotcontribs)/float(global_nbrev)*100) ) ) )
+    
+    global_nbcontributors = 0
+    global_editcount = []
+    global_nbcontribs = []
+    global_min_timestamp = []
+    global_max_timestamp = []
+    global_quartile_1 = []
+    global_quartile_2 = []
+    global_quartile_3 = []
     
     # Write user statistics
     for user in h.userstats:
         
-        (nbcontribs,timestamps) = h.userstats[user]
+        (nbcontribs,ip,timestamps) = h.userstats[user]
+        global_nbcontributors += 1
+        global_nbcontribs.append(nbcontribs)
+        
+        print user
+        
+        # Get the editcount
+        editcount = 0
+        if not ip:
+            xmlString = urllib.urlopen('http://fr.wikisource.org/w/api.php?action=query&list=allusers&auprop=editcount&aulimit=1&format=xml&aufrom='+urllib.quote(user.encode('utf-8'))).read()
+            domxml = xml.dom.minidom.parseString( xmlString )
+            editcount = int(domxml.getElementsByTagName('u').item(0).getAttribute('editcount'))
+            global_editcount.append(editcount)
+        
+        # Sort timestamps
+        timestamps.sort()
+        min_timestamp = min(timestamps)
+        max_timestamp = max(timestamps)
+        quartile_1 = timestamps[int(len(timestamps)*float(1)/float(4))]
+        quartile_2 = timestamps[int(len(timestamps)*float(1)/float(2))]
+        quartile_3 = timestamps[int(len(timestamps)*float(3)/float(4))]
+        
+        global_min_timestamp.append(min_timestamp)
+        global_max_timestamp.append(max_timestamp)
+        global_quartile_1.append(quartile_1)
+        global_quartile_2.append(quartile_2)
+        global_quartile_3.append(quartile_3)
+        
         str_timestamps = [ str(t) for t in timestamps ]
-        userResultsFile.write( u' '.join( ( user, str(nbcontribs), u'|'.join(str_timestamps) ) ) )
+        userResultsFile.write( u' '.join( ( user, str(editcount), str(nbcontribs), u'|'.join(str_timestamps), str(min_timestamp), str(max_timestamp), str(quartile_1), str(quartile_2), str(quartile_3) ) ) )
         userResultsFile.write( u'\n' )
+        
+        time.sleep(1)
+    
+    # Global user stats
+    
+    alleResultsFile.write( '\n' )
+    alleResultsFile.write( u' '.join( ( str(global_nbcontributors), str(int(mean(global_editcount))), str(int(mean(global_nbcontribs))), str(int(mean(global_min_timestamp))), str(int(mean(global_max_timestamp))), str(int(mean(global_quartile_1))), str(int(mean(global_quartile_2))), str(int(mean(global_quartile_3))), str(int(standard_deviation(global_quartile_1))), str(int(standard_deviation(global_quartile_2))), str(int(standard_deviation(global_quartile_3))) ) ) )
     
     # Close files
     metadataFile.close()
@@ -479,17 +608,49 @@ def createStatistics(xmlFilename,metadataFilename,pageResultsFilename,bookResult
 
 def mean(rv):
     
-    return sum(rv)/len(rv)
+    if len(rv) == 0:
+        return -1
+    else:
+        return float(sum(rv))/len(rv)
+
+def mine(rv):
+    
+    if len(rv) == 0:
+        return -1
+    else:
+        return min(rv)
+
+def maxe(rv):
+    
+    if len(rv) == 0:
+        return 0
+    else:
+        return max(rv)
 
 def standard_deviation(rv):
     
-    m = sum(rv)/len(rv)
+    m = mean(rv)
     if len(rv) == 0:
-        return None
-    elif len(rv) == 1:
         return 0
     else:
-        return math.sqrt(sum( [ (x-m)**2 for x in rv ] ) / (len(rv)-1))
+        return math.sqrt(sum( [ (float(x)-m)**2 for x in rv ] ) / len(rv))
 
-createStatistics( 'frwikisource-bnf-20101003-page.xml', 'metadata-stats.txt', 'frwikisource-statistics-20101003-page.txt', 'frwikisource-statistics-20101003-book.txt', 'frwikisource-statistics-20101003-user.txt', 'frwikisource-statistics-20101003-alle.txt' )
+def protect_regex(string):
+    
+    res = re.sub( '\(', '\\(', string )
+    res = re.sub( '\)', '\\)', res )
+    res = re.sub( '\|', '\\|', res )
+    res = re.sub( '\[', '\\[', res )
+    res = re.sub( '\]', '\\]', res )
+    res = re.sub( '\{', '\\{', res )
+    res = re.sub( '\}', '\\}', res )
+    res = re.sub( '\.', '\\.', res )
+    res = re.sub( '\*', '\\*', res )
+    res = re.sub( '\?', '\\?', res )
+    res = re.sub( '\+', '\\+', res )
+    res = re.sub( '\^', '\\^', res )
+    res = re.sub( '\\[0-9AbBdDsSwWZ]', '\\\\0', res )
+    return res
+
+createStatistics( 'frwikisource-bnf-20101003-page.xml', 'metadata-stats.txt', 'frwikisource-statistics-20101003-page.txt', 'frwikisource-statistics-20101003-book.txt', 'frwikisource-statistics-20101003-20101011-user.txt', 'frwikisource-statistics-20101003-20101011-alle.txt' )
 
